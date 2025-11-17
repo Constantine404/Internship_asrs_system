@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ASRS /ws/status/system Monitor with Times</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#121822; --muted:#9aa4b2; --ok:#22c55e; --warn:#eab308; --err:#ef4444; --txt:#e5e7eb; --chip:#1f2937; }
+    * { box-sizing: border-box; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial; }
+    body { margin: 0; background: linear-gradient(180deg,#0b0f14,#0f1623 40%,#0b0f14); color: var(--txt); }
+    header { padding: 16px 20px; border-bottom: 1px solid #1e293b; display:flex; align-items:center; gap:12px; }
+    h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .2px; }
+    main { max-width: 1100px; margin: 18px auto; padding: 0 16px 24px; display: grid; grid-template-columns: 1fr 360px; gap: 16px; }
+    .card { background: var(--card); border: 1px solid #1f2937; border-radius: 14px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
+    .section { padding: 14px 16px; border-bottom: 1px solid #1f2937; }
+    .section:last-child { border-bottom: 0; }
+    .row { display:flex; align-items:center; gap:10px; flex-wrap: wrap; }
+    .grow { flex: 1 1 auto; }
+    input[type=text]{ width:100%; background:#0b1220; border:1px solid #243046; color:var(--txt); border-radius:10px; padding:10px 12px; }
+    button { background:#1e40af; color:#fff; border:0; padding:10px 14px; border-radius:10px; font-weight:600; cursor:pointer; }
+    button.secondary { background:#334155; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    small { color:var(--muted); }
+    .kvs { padding: 8px 10px 2px; display:grid; grid-template-columns: 220px 1fr; gap:10px; }
+    .kv { display: contents; }
+    .key { color:#a7b1c2; padding:8px 6px; }
+    .val { padding:8px 6px; }
+    .chip { display:inline-block; padding:3px 9px; border-radius:999px; background:var(--chip); font-size:12px; font-weight:700; vertical-align:middle; }
+    .chip.on { background: rgba(34,197,94,.15); color: var(--ok); border:1px solid rgba(34,197,94,.35); }
+    .chip.off { background: rgba(239,68,68,.12); color: var(--err); border:1px solid rgba(239,68,68,.35); }
+    .chip.warn { background: rgba(234,179,8,.14); color: var(--warn); border:1px solid rgba(234,179,8,.35); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .pill { border:1px solid #263145; background:#0b1220; color:#9aa4b2; padding:4px 8px; border-radius:999px; font-size:12px; }
+    .log { height: 360px; overflow:auto; padding: 10px 12px; background:#0b1220; border-top:1px solid #1f2937; border-radius: 0 0 14px 14px; }
+    .log p { margin: 0 0 6px; font-size: 12px; color: #a7b1c2; }
+    .ok { color: var(--ok); } .err{ color: var(--err); } .warn{ color: var(--warn); }
+    .grid3 { display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .grid2 { display:grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .tile { background:#0b1220; border:1px solid #1f2937; padding:12px; border-radius:12px; }
+    .tile h3 { margin:0 0 4px; font-size:12px; color:#9aa4b2; font-weight:600; letter-spacing:.2px; }
+    .tile .big { font-size:20px; font-weight:800; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ASRS System Status (WebSocket)</h1>
+    <span id="connState" class="pill">Disconnected</span>
+    <span class="pill" id="lastUpdate">Last update: -</span>
+  </header>
+
+  <main>
+    <!-- LEFT -->
+    <section class="card">
+      <!-- Config / Connect -->
+      <div class="section">
+        <div class="row">
+          <div class="grow">
+            <label for="wsUrl"><small>WebSocket URL</small></label>
+            <input id="wsUrl" type="text" value="ws://localhost:8001/ws/status/system" />
+          </div>
+          <div class="row" style="gap:8px;">
+            <button id="btnConnect">Connect</button>
+            <button id="btnDisconnect" class="secondary" disabled>Disconnect</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Status Tiles -->
+      <div class="section">
+        <div class="grid3">
+          <div class="tile">
+            <h3>ALARM</h3>
+            <div class="big" id="fAlarm"><span class="chip off">OFF</span></div>
+          </div>
+          <div class="tile">
+            <h3>AUTO</h3>
+            <div class="big" id="fAuto"><span class="chip off">OFF</span></div>
+          </div>
+          <div class="tile">
+            <h3>READY</h3>
+            <div class="big" id="fReady"><span class="chip off">OFF</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timing Tiles -->
+      <div class="section">
+        <div class="grid2">
+          <div class="tile">
+            <h3>LAST PUT (s)</h3>
+            <div class="big" id="putTime"><span class="chip off">--</span></div>
+          </div>
+          <div class="tile">
+            <h3>LAST PICK (s)</h3>
+            <div class="big" id="pickTime"><span class="chip off">--</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- All fields -->
+      <div class="section">
+        <div class="row" style="justify-content:space-between;align-items:center;">
+          <strong>All Fields</strong>
+          <small class="mono" id="seqInfo">seq: -</small>
+        </div>
+        <div id="kvList" class="kvs"></div>
+      </div>
+
+      <!-- Log output -->
+      <div class="log" id="log"></div>
+    </section>
+
+    <!-- RIGHT -->
+    <aside class="card">
+      <div class="section">
+        <strong>Actions</strong>
+        <div class="row" style="margin-top:10px; gap:8px; flex-wrap:wrap;">
+          <button id="btnPing" class="secondary">Send Ping</button>
+          <button id="btnClear" class="secondary">Clear Log</button>
+        </div>
+      </div>
+      <div class="section">
+        <strong>Hints</strong>
+        <ul>
+          <li>ค่า boolean จะแสดงเป็นชิป <span class="chip on">ON</span>/<span class="chip off">OFF</span></li>
+          <li>เวลาแสดงในช่อง LAST PUT/PICK คือวินาทีที่ใช้ในการดำเนินงานล่าสุด (ปัดทศนิยม)</li>
+          <li>ถ้า payload มีคีย์อื่น ๆ (เช่น encoder, queue, ฯลฯ) จะปรากฏอัตโนมัติใน “All Fields”</li>
+          <li>เปลี่ยน URL ให้ตรงกับพอร์ต API ของคุณ (เช่น <code>ws://192.168.0.10:8001/ws/status/system</code>)</li>
+        </ul>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // ---------- Helpers ----------
+    const $ = (id) => document.getElementById(id);
+    const logEl = $("log"), kvEl = $("kvList");
+    function log(line, cls="") {
+      const p = document.createElement("p");
+      if (cls) p.className = cls;
+      const ts = new Date().toLocaleTimeString();
+      p.innerHTML = `<span class="mono" style="opacity:.75">${ts}</span> — ${line}`;
+      logEl.appendChild(p);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    function chip(val) {
+      if (val === true)  return `<span class="chip on">ON</span>`;
+      if (val === false) return `<span class="chip off">OFF</span>`;
+      if (val === "WARN") return `<span class="chip warn">WARN</span>`;
+      return `<span class="chip">${String(val)}</span>`;
+    }
+    function isBoolish(v) { return v === true || v === false; }
+    function fmtVal(v) {
+      if (isBoolish(v)) return chip(v);
+      if (typeof v === "number") return `<span class="mono">${v}</span>`;
+      if (typeof v === "object") return `<span class="mono">${JSON.stringify(v)}</span>`;
+      return String(v ?? "");
+    }
+    function setConn(state) {
+      const el = $("connState");
+      el.textContent = state;
+      el.className = "pill";
+      if (state === "Connected") el.classList.add("ok");
+      if (state === "Reconnecting") el.classList.add("warn");
+      if (state === "Disconnected" || state === "Error") el.classList.add("err");
+      $("btnConnect").disabled = (state === "Connected" || state === "Reconnecting");
+      $("btnDisconnect").disabled = !(state === "Connected" || state === "Reconnecting");
+    }
+    function setLastUpdate(ts) {
+      $("lastUpdate").textContent = "Last update: " + (ts ? new Date(ts).toLocaleTimeString() : "-");
+    }
+    function setTri(fldId, v) {
+      $(fldId).innerHTML = chip(!!v);
+    }
+    function setTime(fldId, v) {
+      $(fldId).innerHTML = fmtSecs(v);
+    }
+    function renderAllFields(obj) {
+      kvEl.innerHTML = "";
+      const keys = Object.keys(obj).sort();
+      for (const k of keys) {
+        const rowKey = document.createElement("div");
+        rowKey.className = "kv key";
+        rowKey.textContent = k;
+        const rowVal = document.createElement("div");
+        rowVal.className = "kv val";
+        rowVal.innerHTML = fmtVal(obj[k]);
+        kvEl.appendChild(rowKey);
+        kvEl.appendChild(rowVal);
+      }
+    }
+    // Format seconds: show "--" if null/undefined, else number with 2 decimals
+    function fmtSecs(v) {
+      if (v === null || v === undefined) {
+        return `<span class="chip off">--</span>`;
+      }
+      const num = parseFloat(v);
+      if (isNaN(num)) {
+        return `<span class="chip on">${v}</span>`;
+      }
+      return `<span class="chip on">${num.toFixed(2)} s</span>`;
+    }
+
+    // ---------- WebSocket client ----------
+    let ws = null;
+    let retry = 0;
+    let seq = 0;
+    let reconnectTimer = null;
+
+    function wsUrl() {
+      const v = $("wsUrl").value.trim();
+      if (v) return v;
+      const proto = location.protocol === "https:" ? "wss:" : "ws:";
+      return `${proto}//${location.host}/ws/status/system`;
+    }
+
+    // helper to select first defined property
+    function firstDefined(obj, keys, fallback = null) {
+      for (const k of keys) {
+        if (obj[k] !== undefined && obj[k] !== null) return obj[k];
+      }
+      return fallback;
+    }
+
+    function connect() {
+      clearTimeout(reconnectTimer);
+      const url = wsUrl();
+      try { ws?.close(); } catch {}
+      setConn("Reconnecting");
+      log(`Connecting to ${url} ...`, "warn");
+      ws = new WebSocket(url);
+
+      ws.onopen = () => {
+        retry = 0;
+        setConn("Connected");
+        log("Connected", "ok");
+        ws.send(JSON.stringify({type:"hello", ts: Date.now()}));
+      };
+
+      ws.onmessage = (ev) => {
+        let data = null;
+        try { data = JSON.parse(ev.data); }
+        catch { data = { raw: ev.data }; }
+
+        seq++;
+        $("seqInfo").textContent = `seq: ${seq}`;
+        setLastUpdate(Date.now());
+
+        // Detect flags with multiple possible keys
+        const alarm = firstDefined(data, ["alarm","asrs_alarm","ALARM"], false);
+        const auto  = firstDefined(data, ["auto","auto_mode","asrs_auto_mode","asrs_auto","AUTO"], false);
+        const ready = firstDefined(data, ["ready","asrs_ready","READY"], false);
+
+        setTri("fAlarm", !!alarm);
+        setTri("fAuto",  !!auto);
+        setTri("fReady", !!ready);
+
+        // Extract timing info if present
+        const putSec  = firstDefined(data, ["last_put_seconds", "last_put", "PUTTIME"], null);
+        const pickSec = firstDefined(data, ["last_pick_seconds", "last_pick", "PICKTIME"], null);
+        setTime("putTime", putSec);
+        setTime("pickTime", pickSec);
+
+        // Render all raw fields
+        renderAllFields(data);
+      };
+
+      ws.onerror = () => {
+        log("WebSocket error", "err");
+      };
+
+      ws.onclose = (e) => {
+        setConn("Disconnected");
+        log(`Disconnected (${e.code})`, "err");
+        // Auto reconnect with backoff
+        retry = Math.min(retry + 1, 8);
+        const delay = Math.min(30000, 600 * retry);
+        reconnectTimer = setTimeout(connect, delay);
+        setConn("Reconnecting");
+      };
+    }
+
+    function disconnect() {
+      clearTimeout(reconnectTimer);
+      if (ws) {
+        try {
+          ws.onclose = null; // Prevent auto reconnect
+          ws.close(1000, "client-close");
+          ws = null;
+        } catch (e) {
+          log("Error closing connection: " + e.message, "err");
+        }
+      }
+      setConn("Disconnected");
+      log("Disconnected by user", "warn");
+    }
+
+    // ---------- UI bindings ----------
+    $("btnConnect").addEventListener("click", connect);
+    $("btnDisconnect").addEventListener("click", disconnect);
+    $("btnPing").addEventListener("click", () => {
+      try { ws?.send(JSON.stringify({type:"ping", ts: Date.now()})); log("ping -> sent"); }
+      catch { log("ping -> failed (socket not open)", "err"); }
+    });
+    $("btnClear").addEventListener("click", () => { logEl.innerHTML=""; });
+
+    // Uncomment below line to auto-connect on page load
+    // connect();
+  </script>
+</body>
+</html>
